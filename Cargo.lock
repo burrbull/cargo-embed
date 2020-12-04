@@ -306,7 +306,7 @@ dependencies = [
  "env_logger",
  "gdb-server",
  "git-version",
- "goblin 0.2.3",
+ "goblin",
  "indicatif",
  "lazy_static",
  "log",
@@ -960,17 +960,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
-]
-
-[[package]]
-name = "goblin"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d20fd25aa456527ce4f544271ae4fea65d2eda4a6561ea56f39fb3ee4f7e3884"
-dependencies = [
- "log",
- "plain",
- "scroll",
 ]
 
 [[package]]
@@ -1848,7 +1837,7 @@ dependencies = [
  "bitvec",
  "enum-primitive-derive",
  "gimli 0.23.0",
- "goblin 0.3.0",
+ "goblin",
  "hidapi",
  "ihex",
  "jaylink",
