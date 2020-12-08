@@ -5,6 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use probe_rs_rtt::RttChannel;
+use std::convert::TryInto;
 use std::io::{Read, Seek, Write};
 use std::{fmt::write, path::PathBuf};
 use textwrap::wrap_iter;
@@ -12,8 +13,9 @@ use tui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
+    symbols,
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Axis, Block, Borders, Chart, Dataset, List, ListItem, Paragraph, Tabs},
     Terminal,
 };
 
@@ -238,6 +240,136 @@ impl App {
                         .set_scroll_offset(message_num - height.min(message_num));
                 }
             }
+            DataFormat::BinaryLE => {
+                self.terminal
+                    .draw(|f| {
+                        let constraints = if has_down_channel {
+                            &[
+                                Constraint::Length(1),
+                                Constraint::Min(1),
+                                Constraint::Length(1),
+                            ][..]
+                        } else {
+                            &[Constraint::Length(1), Constraint::Min(1)][..]
+                        };
+                        let chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .margin(0)
+                            .constraints(constraints)
+                            .split(f.size());
+
+                        let tab_names = tabs
+                            .iter()
+                            .map(|t| Spans::from(t.name()))
+                            .collect::<Vec<_>>();
+                        let tabs = Tabs::new(tab_names)
+                            .select(current_tab)
+                            .style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                            .highlight_style(
+                                Style::default()
+                                    .fg(Color::Green)
+                                    .bg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            );
+                        f.render_widget(tabs, chunks[0]);
+
+                        let max_x = 128;
+
+                        let dater = data
+                            .chunks_exact(4)
+                            .map(|bytes| {
+                                //impossible to fail?
+                                f32::from_le_bytes(bytes.try_into().unwrap())
+                            })
+                            .rev()
+                            .take(max_x * 3)
+                            .rev();
+
+                        let x = dater
+                            .clone()
+                            .step_by(3)
+                            .enumerate()
+                            .map(|(i, val)| (i as f64, val as f64))
+                            .collect::<Vec<(f64, f64)>>();
+
+                        let y = dater
+                            .clone()
+                            .skip(1)
+                            .step_by(3)
+                            .enumerate()
+                            .map(|(i, val)| (i as f64, val as f64))
+                            .collect::<Vec<(f64, f64)>>();
+
+                        let z = dater
+                            .clone()
+                            .skip(2)
+                            .step_by(3)
+                            .enumerate()
+                            .map(|(i, val)| (i as f64, val as f64))
+                            .collect::<Vec<(f64, f64)>>();
+
+                        //in our case no ord for f32 so need a nan datatype to do .min or max
+                        let min = -2000.0;
+                        let max = 2000.0;
+
+                        let x_labels = [
+                            format!("{}", 0.0),
+                            format!("{}", (0.0 + x.len() as f64) / 2.0),
+                            format!("{}", x.len()),
+                        ];
+                        let y_labels = &[min.to_string(), "0".to_string(), max.to_string()];
+
+                        let datasets = vec![
+                            Dataset::default()
+                                .name("x")
+                                .marker(symbols::Marker::Braille)
+                                .style(Style::default().fg(Color::Yellow))
+                                .data(&x),
+                            Dataset::default()
+                                .name("y")
+                                .marker(symbols::Marker::Braille)
+                                .style(Style::default().fg(Color::Blue))
+                                .data(&y),
+                            Dataset::default()
+                                .name("z")
+                                .marker(symbols::Marker::Braille)
+                                .style(Style::default().fg(Color::Green))
+                                .data(&z),
+                        ];
+                        let italic = Style::default().add_modifier(Modifier::ITALIC);
+                        let chart = Chart::new(datasets)
+                            .block(
+                                Block::default()
+                                    .title(Span::styled(
+                                        "Chart 1",
+                                        Style::default()
+                                            .fg(Color::Cyan)
+                                            .add_modifier(Modifier::BOLD),
+                                    ))
+                                    .borders(Borders::ALL),
+                            )
+                            .x_axis(
+                                Axis::default()
+                                    .title("X Axis")
+                                    .style(Style::default().fg(Color::Gray))
+                                    .bounds([0.0, x.len() as f64])
+                                    .labels(
+                                        x_labels.iter().map(|l| Span::styled(l, italic)).collect(),
+                                    ),
+                            )
+                            .y_axis(
+                                Axis::default()
+                                    .title("Y Axis")
+                                    .style(Style::default().fg(Color::Gray))
+                                    .bounds([min, max])
+                                    .labels(
+                                        y_labels.iter().map(|l| Span::styled(l, italic)).collect(),
+                                    ),
+                            );
+                        f.render_widget(chart, chunks[1]);
+                    })
+                    .unwrap();
+            }
             binle_or_defmt => {
                 self.terminal
                     .draw(|f| {
@@ -276,6 +408,7 @@ impl App {
                         // probably pretty bad
                         match binle_or_defmt {
                             DataFormat::BinaryLE => {
+                                // NOTE: temporary unreachable
                                 messages_wrapped.push(data.iter().fold(
                                     String::new(),
                                     |mut output, byte| {
@@ -464,7 +597,7 @@ impl App {
 
     /// Polls the RTT target for new data on all channels.
     pub fn poll_rtt(&mut self) {
-        for channel in self.tabs.iter_mut() {
+        for channel in &mut self.tabs {
             channel.poll_rtt();
         }
     }

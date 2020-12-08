@@ -137,8 +137,6 @@ impl ChannelState {
 
         match self.format {
             DataFormat::String => {
-                let now = Local::now();
-
                 // First, convert the incoming bytes to UTF8.
                 let mut incoming = String::from_utf8_lossy(&self.rtt_buffer.0[..count]).to_string();
 
@@ -150,6 +148,8 @@ impl ChannelState {
                     }
                 }
                 self.last_line_done = incoming.ends_with('\n');
+
+                let now = Local::now();
 
                 // Then split the incoming buffer discarding newlines and if necessary
                 // add a timestamp at start of each.
